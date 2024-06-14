@@ -11,9 +11,12 @@ import net.kdt.pojavlaunch.prefs.LauncherPreferences;
 import org.lwjgl.glfw.CallbackBridge;
 
 public class InGUIEventProcessor implements TouchEventProcessor {
-    public static final float FINGER_SCROLL_THRESHOLD = Tools.dpToPx(6);
-    public static final float FINGER_STILL_THRESHOLD = Tools.dpToPx(5);
 
+    // Constants for touch thresholds
+    private static final float FINGER_SCROLL_THRESHOLD = Tools.dpToPx(6);
+    private static final float FINGER_STILL_THRESHOLD = Tools.dpToPx(5);
+
+    // Objects for tracking touch events and gestures
     private final PointerTracker mTracker = new PointerTracker();
     private final TapDetector mSingleTapDetector;
     private AbstractTouchpad mTouchpad;
@@ -22,36 +25,45 @@ public class InGUIEventProcessor implements TouchEventProcessor {
     private final float mScaleFactor;
     private final Scroller mScroller = new Scroller(FINGER_SCROLL_THRESHOLD);
 
+    // Constructor
     public InGUIEventProcessor(float scaleFactor) {
         mSingleTapDetector = new TapDetector(1, TapDetector.DETECTION_METHOD_BOTH);
         mScaleFactor = scaleFactor;
     }
 
+    // Process touch events
     @Override
     public boolean processTouchEvent(MotionEvent motionEvent) {
         switch (motionEvent.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 mTracker.startTracking(motionEvent);
-                if(!touchpadDisplayed()) {
+                if (!touchpadDisplayed()) {
                     sendTouchCoordinates(motionEvent.getX(), motionEvent.getY());
 
-                    // disabled gestures means no scrolling possible, send gesture early
-                    if (LauncherPreferences.PREF_DISABLE_GESTURES) enableMouse();
-                    else setGestureStart(motionEvent);
+                    // Disable gestures if disabled in preferences
+                    if (LauncherPreferences.PREF_DISABLE_GESTURES) {
+                        enableMouse();
+                    } else {
+                        setGestureStart(motionEvent);
+                    }
                 }
                 break;
 
             case MotionEvent.ACTION_MOVE:
                 int pointerCount = motionEvent.getPointerCount();
                 int pointerIndex = mTracker.trackEvent(motionEvent);
-                if(pointerCount == 1 || LauncherPreferences.PREF_DISABLE_GESTURES) {
-                    if(touchpadDisplayed()) {
-                        if(!CallbackBridge.nativeGetInverted()) {
-                            mTouchpad.applyMotionVector(mTracker.getMotionVector());
+
+                // Handle single pointer movement
+                if (pointerCount == 1 || LauncherPreferences.PREF_DISABLE_GESTURES) {
+                    if (touchpadDisplayed()) {
+                        // Apply motion vector to touchpad (considering inversion)
+                        float[] motionVector = mTracker.getMotionVector();
+                        if (!CallbackBridge.nativeGetInverted()) {
+                            mTouchpad.applyMotionVector(motionVector);
                         } else {
                             float[] reversed = new float[2];
-                            reversed[0] = mTracker.getMotionVector()[1];
-                            reversed[1] = mTracker.getMotionVector()[0];
+                            reversed[0] = motionVector[1];
+                            reversed[1] = motionVector[0];
                             mTouchpad.applyMotionVector(reversed);
                         }
                     } else {
@@ -59,30 +71,40 @@ public class InGUIEventProcessor implements TouchEventProcessor {
                         float mainPointerY = motionEvent.getY(pointerIndex);
                         sendTouchCoordinates(mainPointerX, mainPointerY);
 
-                        if(!mIsMouseDown) {
-                            if(!hasGestureStarted()) setGestureStart(motionEvent);
-                            if(!LeftClickGesture.isFingerStill(mStartX, mStartY, FINGER_STILL_THRESHOLD))
+                        // Enable mouse if movement exceeds still threshold
+                        if (!mIsMouseDown) {
+                            if (!hasGestureStarted()) {
+                                setGestureStart(motionEvent);
+                            }
+                            if (!LeftClickGesture.isFingerStill(mStartX, mStartY, FINGER_STILL_THRESHOLD)) {
                                 enableMouse();
+                            }
                         }
-
                     }
-                } else mScroller.performScroll(mTracker.getMotionVector());
+                } else {
+                    // Handle multi-pointer scrolling
+                    mScroller.performScroll(mTracker.getMotionVector());
+                }
                 break;
 
             case MotionEvent.ACTION_CANCEL:
             case MotionEvent.ACTION_UP:
                 mScroller.resetScrollOvershoot();
                 mTracker.cancelTracking();
-                if(mIsMouseDown) disableMouse();
+                if (mIsMouseDown) {
+                    disableMouse();
+                }
                 resetGesture();
         }
 
-        if((!LauncherPreferences.PREF_DISABLE_GESTURES || touchpadDisplayed()) && mSingleTapDetector.onTouchEvent(motionEvent)) {
+        // Check for single tap and click mouse if detected
+        if ((!LauncherPreferences.PREF_DISABLE_GESTURES || touchpadDisplayed()) && mSingleTapDetector.onTouchEvent(motionEvent)) {
             clickMouse();
         }
         return true;
     }
 
+    // Check if touchpad is displayed
     private boolean touchpadDisplayed() {
         return mTouchpad != null && mTouchpad.getDisplayState();
     }
